@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https: http://localhost:* http://127.0.0.1:*; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <title>Fraud Detector Console</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2.5 4.5 5.5v5.7c0 4.6 3.1 8.8 7.5 10.3 4.4-1.5 7.5-5.7 7.5-10.3V5.5L12 2.5z' fill='%2329ccb1'/%3E%3Cpath d='m8.6 12 2.3 2.3 4.6-4.8' stroke='%231f2326' stroke-width='2' fill='none'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/dashboard.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
+          <path class="brand-shield" d="M12 2.5 4.5 5.5v5.7c0 4.6 3.1 8.8 7.5 10.3 4.4-1.5 7.5-5.7 7.5-10.3V5.5L12 2.5z"/>
+          <path class="brand-check" d="m8.6 12 2.3 2.3 4.6-4.8"/>
+        </svg>
+        <div>
+          <h1>Fraud Detector</h1>
+          <p class="brand-sub">Monitoring console</p>
+        </div>
+      </div>
+      <nav class="sectionnav" aria-label="Sections">
+        <a href="#overview">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 4.5 5.5v5.7c0 4.6 3.1 8.8 7.5 10.3 4.4-1.5 7.5-5.7 7.5-10.3V5.5L12 2.5z"/></svg>
+          Overview</a>
+        <a href="#activity">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20v-8M12 20V5M19 20v-5M3 20h18"/></svg>
+          Fraud activity</a>
+        <a href="#transactions">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/></svg>
+          Transactions</a>
+        <a href="#health">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-7 4 14 3-7h4"/></svg>
+          Pipeline health</a>
+      </nav>
+      <div class="sidebar-foot">
+        <span id="mode" class="mode">—</span>
+        <p><span id="source"></span><br><span id="updated">loading…</span></p>
+      </div>
+    </aside>
+
+    <div class="workspace">
+      <header class="topbar">
+        <div class="topbar-title">
+          <h2 class="page-title">Monitoring</h2>
+          <span id="overall"></span>
+        </div>
+        <div class="controls" role="group" aria-label="Dashboard settings">
+          <label title="How many of the newest transactions the charts and tables are based on">Sample
+            <select id="window">
+              <option value="200">last 200</option>
+              <option value="500">last 500</option>
+              <option value="1000">last 1,000</option>
+            </select>
+          </label>
+          <label title="Time range of the CloudWatch charts under Pipeline health">Metrics range
+            <select id="hours">
+              <option value="1">1 hour</option>
+              <option value="3">3 hours</option>
+              <option value="12">12 hours</option>
+              <option value="24">24 hours</option>
+            </select>
+          </label>
+          <label title="Reload the data every 30 seconds"><input id="auto" type="checkbox"> Auto-refresh</label>
+          <button id="refresh" class="btn btn-primary" type="button">Refresh</button>
+          <button id="theme" class="btn btn-icon" type="button" aria-label="Switch between light and dark" title="Light / dark">◐</button>
+        </div>
+      </header>
+
+      <div id="banners" aria-live="polite"></div>
+
+      <main id="main">
+        <section id="overview" tabindex="-1" aria-labelledby="h-overview">
+          <h2 id="h-overview">Overview</h2>
+          <article id="status-hero" class="hero" aria-live="polite"></article>
+          <div id="kpis" class="kpis"></div>
+          <article class="card card-flow">
+            <header><h3>Pipeline</h3>
+              <p class="sub">Follow a transaction from left to right. Each box shows its AWS stage's status for the last 15 minutes; “Metrics ↓” opens that stage's charts.</p></header>
+            <div id="flow" class="flow"></div>
+          </article>
+        </section>
+
+        <section id="activity" tabindex="-1" aria-labelledby="h-activity">
+          <h2 id="h-activity">Fraud activity</h2>
+          <p class="section-sub" id="activity-sub">Latest transactions in the sample.</p>
+          <div class="grid">
+            <article class="card span-2">
+              <header><h3>Transactions over time</h3><p class="sub" id="volume-sub">By arrival time</p></header>
+              <div class="chart"><canvas id="c-volume" role="img" aria-label="Transactions per time bucket, flagged versus not flagged. Click a bar to list them."></canvas></div>
+            </article>
+            <article class="card">
+              <header><h3>Fraud score distribution</h3><p class="sub" id="hist-sub">Scores in 0.05 bins</p></header>
+              <div class="chart"><canvas id="c-hist" role="img" aria-label="Histogram of fraud scores. Click a bar to list those transactions."></canvas></div>
+            </article>
+            <article class="card">
+              <header><h3>Flagged by category</h3><p class="sub">Merchant category · click a bar to list them</p></header>
+              <div class="chart chart-tall"><canvas id="c-category" role="img" aria-label="Flagged transactions by merchant category"></canvas></div>
+            </article>
+            <article class="card">
+              <header><h3>Transactions by hour of day</h3><p class="sub">Hour of the original purchase; fraud clusters at night</p></header>
+              <div class="chart"><canvas id="c-hour" role="img" aria-label="Transactions by hour of day, flagged versus not flagged"></canvas></div>
+            </article>
+            <article class="card">
+              <header><h3>Amount vs fraud score</h3><p class="sub">Each dot is a transaction · click one to open it</p></header>
+              <div class="chart"><canvas id="c-scatter" role="img" aria-label="Scatter of amount against fraud score"></canvas></div>
+            </article>
+            <article class="card">
+              <header><h3>Flagged by state</h3><p class="sub">Top states · click a bar to list them</p></header>
+              <div class="chart chart-tall"><canvas id="c-state" role="img" aria-label="Flagged transactions by state"></canvas></div>
+            </article>
+            <article class="card">
+              <header><h3>Label check</h3><p class="sub">Did the model flag the transactions that were really fraud?</p></header>
+              <div id="label-check"></div>
+            </article>
+            <article class="card">
+              <header><h3>Processing &amp; alerts</h3><p class="sub">Where each transaction is in its lifecycle</p></header>
+              <div id="status"></div>
+            </article>
+          </div>
+        </section>
+
+        <section id="transactions" tabindex="-1" aria-labelledby="h-triage">
+          <h2 id="h-triage">Transactions</h2>
+          <p class="section-sub">Review individual transactions. Press <kbd>/</kbd> to search from anywhere.</p>
+          <article class="card">
+            <header class="triage-head">
+              <div class="tabs" role="tablist" aria-label="Transaction list">
+                <button id="tab-flagged" role="tab" type="button" aria-selected="true" aria-controls="table">Flagged <span id="count-flagged" class="count"></span></button>
+                <button id="tab-recent" role="tab" type="button" aria-selected="false" aria-controls="table">All recent <span id="count-recent" class="count"></span></button>
+              </div>
+              <div class="search">
+                <label for="search" class="sr-only">Search transactions</label>
+                <input id="search" type="search" placeholder="Search merchant, category, state or ID" autocomplete="off" spellcheck="false">
+              </div>
+            </header>
+            <div id="filter-chips" class="chips" aria-live="polite"></div>
+            <div id="table" class="table-wrap" role="tabpanel" tabindex="0" aria-label="Transactions"></div>
+            <p class="sub" id="table-sub"></p>
+            <form id="lookup" class="lookup" role="search">
+              <label for="lookup-id">Older transaction? Look it up by its full event ID</label>
+              <input id="lookup-id" type="search" placeholder="e.g. a3836b30-2a39-543c-a8af-baca7121e670" autocomplete="off" spellcheck="false" maxlength="36">
+              <button class="btn" type="submit">Find</button>
+              <span id="lookup-msg" class="muted" aria-live="polite"></span>
+            </form>
+          </article>
+        </section>
+
+        <section id="health" tabindex="-1" aria-labelledby="h-health">
+          <h2 id="h-health">Pipeline health</h2>
+          <p class="section-sub" id="health-sub">CloudWatch metrics for every stage.</p>
+          <div id="metric-grid" class="grid"></div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <dialog id="drawer" class="drawer" aria-labelledby="drawer-title">
+    <header class="drawer-head">
+      <h3 id="drawer-title">Transaction</h3>
+      <button id="drawer-close" class="btn btn-icon" type="button" aria-label="Close">✕</button>
+    </header>
+    <div id="drawer-body"></div>
+  </dialog>
+
+  <script src="config.js"></script>
+  <!-- Chart.js 4.4.1 (MIT), vendored and hash-pinned so the CSP can stay script-src 'self' -->
+  <script src="js/vendor/chart.umd.min.js"
+          integrity="sha384-bs/nf9FbdNouRbMiFcrcZfLXYPKiPaGVGplVbv7dLGECccEXDW+S3zjqSKR5ZEaD"></script>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
