@@ -1,9 +1,0 @@
-{
-  "name": "fraud-dashboard",
-  "private": true,
-  "type": "module",
-  "description": "Static dashboard for the credit card fraud detector (no build step, no runtime npm dependencies).",
-  "scripts": {
-    "test": "node --test \"tests/*.test.js\""
-  }
-}
