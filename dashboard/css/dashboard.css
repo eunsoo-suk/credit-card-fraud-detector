@@ -2,7 +2,9 @@
    colors are colorblind-validated in both themes. Boxes are plain; status is an icon + label. */
 :root {
   color-scheme: light dark;
-  --page: light-dark(#f2f3f4, #121416);
+  --page: light-dark(#f4f4f1, #0c0c0c);
+  --glow-sky: light-dark(rgb(77 214 255 / 0.34), rgb(77 214 255 / 0.30));        /* #4dd6ff */
+  --glow-accent: light-dark(rgb(102 192 177 / 0.26), rgb(126 253 254 / 0.18));   /* teal #66c0b1 / cyan #7efdfe */
   --surface: light-dark(#ffffff, #1a1d20);
   --surface-raised: light-dark(#ffffff, #22262a);
   --text-primary: light-dark(#1d1f21, #eef0f1);
@@ -41,6 +43,14 @@
 html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
 body { margin: 0; background: var(--page); color: var(--text-primary); font: 14px/1.45 var(--font); }
+/* Page glows: a fixed layer under all content (two sky, one accent), so boxes stay plain and it doesn't scroll */
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(50vmax 40vmax at 22% 0%, var(--glow-sky), transparent 70%),
+    radial-gradient(55vmax 45vmax at 80% 100%, var(--glow-sky), transparent 70%),
+    radial-gradient(40vmax 35vmax at 100% 18%, var(--glow-accent), transparent 70%);
+}
 h1, h2, h3, h4 { margin: 0; font-weight: 600; }
 h2 { font-size: 20px; margin: 32px 0 4px; letter-spacing: -0.01em; }
 h3 { font-size: 14px; }
