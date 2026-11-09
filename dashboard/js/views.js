@@ -1,5 +1,3 @@
-// DOM views. Values are set as text, never HTML; status is a pill, not a box color.
-
 import * as fmt from "./format.js";
 import { STAGES } from "./health.js";
 
@@ -12,7 +10,6 @@ export const STATUS = {
   off: { icon: "–", text: "Off" },
 };
 
-/** Status pill: icon + label, so state is never carried by color alone. */
 export function pill(status, text = STATUS[status].text) {
   return el("span", { class: `pill pill-${status}` },
     el("span", { class: "pill-icon", "aria-hidden": "true" }, STATUS[status].icon), text);
@@ -33,7 +30,6 @@ const MARKS = {
   off: "M9 12h6",
 };
 
-/** Generic status shield (fixed path data, never user input). */
 function shieldIcon(status) {
   const svg = document.createElementNS(SVG_NS, "svg");
   svg.setAttribute("viewBox", "0 0 24 24");
@@ -57,10 +53,6 @@ function heroSentence(status, summary, hasUnconfirmed) {
     `${lead} ${fmt.count(summary.flagged)} of ${fmt.count(summary.total)} transactions in the sample were flagged.`);
 }
 
-/**
- * Status panel: overall health in one sentence, what needs attention, where to go.
- * `unconfirmed` lists stages with no data, so "no data" always names the stage it is about.
- */
 export function renderHero(root, { status, issues, unconfirmed = [], summary, demo }, go) {
   const critical = issues.filter((i) => i.status === "critical").length;
   const title = {
@@ -68,7 +60,7 @@ export function renderHero(root, { status, issues, unconfirmed = [], summary, de
     warning: `${fmt.plural(issues.length, "stage")} need${issues.length === 1 ? "s" : ""} attention`,
     critical: `${fmt.plural(critical, "stage")} failing`,
     unknown: "Waiting for data",
-  }[status]; // overall() only returns these four
+  }[status];
   const rows = [...issues, ...unconfirmed].slice(0, MAX_HERO_ROWS);
   const list = rows.length ? el("ul", { class: "hero-issues" }, ...rows.map((i) => el("li", {},
     pill(i.status, i.name), el("span", {}, i.detail || i.headline)))) : null;
@@ -137,7 +129,6 @@ function statusLegend() {
     ...Object.keys(STATUS).map((key) => el("li", {}, pill(key))));
 }
 
-/** Pipeline diagram: main path left to right, SNS alerts as a branch off scoring. */
 export function renderFlow(root, health, resources = {}, onMetrics) {
   const byKey = Object.fromEntries(STAGES.map((s) => [s.key, s]));
   const node = (key) => stageNode(byKey[key], health[key], resources[key], () => onMetrics(key));
@@ -177,7 +168,7 @@ export function renderLabelCheck(root, check) {
 function meterList(entries, total) {
   return el("ul", { class: "meters" }, ...entries.map(([name, n]) => {
     const fill = el("span", { class: "meter-fill" });
-    fill.style.width = `${total ? (100 * n) / total : 0}%`; // CSSOM, allowed by the page's CSP
+    fill.style.width = `${total ? (100 * n) / total : 0}%`;
     return el("li", {},
       el("div", { class: "meter-row" }, el("span", {}, name), el("span", { class: "num" }, fmt.count(n))),
       el("div", { class: "meter", role: "img", "aria-label": `${name}: ${fmt.count(n)} of ${fmt.count(total)}` },
@@ -259,5 +250,5 @@ export function renderDetail(root, item) {
       ["Source row / replay cycle", `${item.source_row} / ${item.replay_cycle}`]]),
     fields("Evaluation label (never sent to the model)", [
       ["Ground truth", item.ground_truth?.is_fraud === 1 ? "fraud" : "legit"]]),
-  ].filter(Boolean)); // replaceChildren would render null as the text "null"
+  ].filter(Boolean));
 }

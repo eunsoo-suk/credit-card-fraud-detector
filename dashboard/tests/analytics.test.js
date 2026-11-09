@@ -95,7 +95,7 @@ test("scoreHistogram splits each bin at the threshold", () => {
   assert.equal(h.bins[0].below, 1);
   assert.equal(h.bins[4].below, 1);
   assert.equal(h.bins[5].above, 1);
-  assert.equal(h.bins[9].above, 1); // score 1.0 lands in the last bin
+  assert.equal(h.bins[9].above, 1);
 });
 
 test("groupBy ranks by flagged count and folds the tail into Other", () => {

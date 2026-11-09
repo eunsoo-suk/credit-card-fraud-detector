@@ -1,11 +1,8 @@
-// Drill-down filters ({label, test}) created by chart clicks, shown as removable chips.
-
 import { clock, duration, label as humanize } from "./format.js";
 
 const category = (item) => humanize(item.features?.category);
 const stateOf = (item) => item.features?.state ?? "unknown";
 
-/** Matches `key`, or for the folded "Other" bar, anything not among `shown`. */
 function grouped(name, valueOf, key, shown) {
   if (key === "Other") {
     return { label: `${name}: Other`, test: (item) => !shown.includes(valueOf(item)) };
@@ -20,7 +17,6 @@ export const filters = {
     label: `Hour ${hour}:00–${hour}:59`,
     test: (item) => Number(item.features?.hour) === hour,
   }),
-  /** Arrived in [start, start + seconds). */
   arrival: (start, seconds) => ({
     label: `Arrived ${clock(start, seconds < 60)} + ${duration(seconds * 1000)}`,
     test: (item) => {
@@ -28,14 +24,12 @@ export const filters = {
       return t >= start && t < start + seconds * 1000;
     },
   }),
-  /** Score in [from, to); the last bin also includes 1.0. */
   score: (from, to) => ({
     label: `Score ${from.toFixed(2)}–${to.toFixed(2)}`,
     test: (item) => typeof item.fraud_score === "number" && item.fraud_score >= from
       && (item.fraud_score < to || (to >= 1 && item.fraud_score <= 1)),
   }),
   status: (status) => ({ label: `Status: ${status.toLowerCase()}`, test: (item) => item.status === status }),
-  /** Only predicted fraud, optionally within another filter (for the orange bars). */
   flagged: (inner = null) => ({
     label: inner ? `${inner.label} · flagged` : "Flagged",
     test: (item) => item.predicted_fraud === true && (!inner || inner.test(item)),

@@ -1,5 +1,3 @@
-// Fraud activity charts: every bar filters the transaction table, every dot opens one.
-
 import * as A from "./analytics.js";
 import * as charts from "./charts.js";
 import * as fmt from "./format.js";
@@ -7,10 +5,9 @@ import { filters } from "./filters.js";
 import * as views from "./views.js";
 
 const $ = (id) => document.getElementById(id);
-const FLAGGED = 2; // series slot: orange = flagged, everywhere on the page
-const CLEAR = 1;   // teal = not flagged
+const FLAGGED = 2;
+const CLEAR = 1;
 
-// Clicks filter the sample ("recent" tab); an orange segment also narrows to flagged rows.
 const flaggedIf = (datasetIndex, filter) => (datasetIndex === 1 ? filters.flagged(filter) : filter);
 
 function drawGroups(id, groups, makeFilter, onFilter) {

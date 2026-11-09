@@ -1,17 +1,15 @@
-// Synthetic DEMO DATA source (same interface as api.js), seeded so refreshes are stable.
-
 const DAY_MS = 86_400_000;
-const PROCESSING_MS = 3_000;    // newest few seconds are still PENDING
-const ALERT_DELAY_MS = 20_000;  // flagged items wait this long before SENT
+const PROCESSING_MS = 3_000;
+const ALERT_DELAY_MS = 20_000;
 const ERROR_RATE = 0.003;
-const FRAUD_RATE = 0.03;        // enriched for the demo; the real test file is 0.386%
+const FRAUD_RATE = 0.03;
 const THRESHOLD = 0.5;
 const MODEL_VERSION = "demo-model-v1";
 const SCAN_LIMIT = 200_000;
 const CACHE_LIMIT = 50_000;
-const SOURCE_EPOCH = Date.UTC(2020, 5, 21, 12, 14, 25); // first fraudTest.csv timestamp
-const SOURCE_ROWS = 555_719;   // fraudTest.csv rows; the replay loops over them
-const ROWS_PER_DAY = 3_000;    // ~555k rows over ~190 days
+const SOURCE_EPOCH = Date.UTC(2020, 5, 21, 12, 14, 25);
+const SOURCE_ROWS = 555_719;
+const ROWS_PER_DAY = 3_000;
 
 const CATEGORIES = [
   ["grocery_pos", 12], ["gas_transport", 11], ["home", 10], ["shopping_pos", 9],
@@ -27,7 +25,6 @@ const STATES = [["TX", 9], ["NY", 8], ["PA", 7], ["CA", 6], ["OH", 5], ["MI", 5]
 const NIGHT_HOURS = new Set([22, 23, 0, 1, 2, 3]);
 const ONLINE_CATEGORIES = new Set(["shopping_net", "misc_net", "grocery_pos"]);
 
-// key -> [stat, unit, label]; mirrors CATALOG in ../cloudwatch_metrics.py (parity-tested)
 const METRICS = {
   "producer.cpu": ["Average", "Percent", "Producer CPU"],
   "kinesis.incoming_records": ["Sum", "Count", "Records in"],
@@ -57,7 +54,6 @@ const METRICS = {
   "api.latency": ["Average", "Milliseconds", "Latency"],
 };
 
-/** JS port of lambdas/writer/scorer.py placeholder_score (features only). */
 export function placeholderScore(features) {
   let s = 0.02;
   const amount = Number(features.amount);
@@ -150,7 +146,6 @@ function transaction(seed, rate, n, now) {
     return { ...base, status: "ERROR", attempts: 1, updated_at: scoredAt,
       error_message: "scoring failed: demo endpoint timeout" };
   }
-  // Imperfect on purpose: some fraud is missed and some legit traffic is flagged.
   const signal = fraud ? 0.2 + rand() * 0.7 : rand() ** 4 * 0.62;
   const fraudScore = round(Math.min(0.999, placeholderScore(f) * 0.5 + signal), 4);
   const flagged = fraudScore >= THRESHOLD;
@@ -186,11 +181,10 @@ function metricValue(key, rand, ctx) {
     case "api.requests": return Math.round(jitter(20, 32) * (period / 60));
     case "api.errors_4xx": return rare(0.05);
     case "api.latency": return round(jitter(35, 120), 1);
-    default: return 0; // throttles and failures stay at zero in the demo
+    default: return 0;
   }
 }
 
-/** `rate` is transactions per second (the README's producer runs at 2-5). */
 export function createDemoSource({ seed = 7, rate = 2, now = () => Date.now() } = {}) {
   const cache = new Map();
   const at = (n, t) => {

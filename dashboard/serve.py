@@ -46,9 +46,7 @@ PAGE_PATHS = ("/", "/index.html")
 log = logging.getLogger("dashboard")
 
 
-# ------------------------------------------------------------------ pure helpers
 def read_state(local_dir):
-    """API URL, region and per-stage resource names from the deploy scripts' outputs."""
     def load(name):
         path = local_dir / name
         if not path.is_file():
@@ -77,40 +75,25 @@ def read_state(local_dir):
 
 
 def config_script(api_url, metrics_url):
-    """window.FRAUD_DASHBOARD_CONFIG as JavaScript; '<' is escaped so it cannot end a tag."""
     payload = json.dumps({"apiUrl": api_url, "metricsUrl": metrics_url})
     return f"window.FRAUD_DASHBOARD_CONFIG = {payload.replace('<', chr(92) + 'u003c')};\n"
 
 
 def request_path(raw):
-    """Percent-decoded path of a request target; None unless it is a plain absolute path.
-
-    SimpleHTTPRequestHandler decodes %2e%2e itself, so the allowlist must check the
-    decoded form too; "//host/..." and absolute-URL targets are refused outright.
-    """
     if not raw.startswith("/") or raw.startswith("//"):
         return None
     return unquote(raw.split("?", 1)[0].split("#", 1)[0])
 
 
 def is_public(path):
-    """Only the page and its css/js assets are served (not this script or tests).
-
-    `path` must already be decoded with request_path().
-    """
     if path == "/":
         return True
     if "\\" in path or "\x00" in path or "%" in path or posixpath.normpath(path) != path:
-        return False  # traversal, odd separators, double encoding, or listings like "/js/"
+        return False
     return path in PUBLIC_FILES or path.startswith(PUBLIC_DIRS)
 
 
 def is_cross_site(headers, path):
-    """True for requests another website triggered (Fetch Metadata), except opening the page.
-
-    Stops other sites from reading config.js (the API URL) or spending CloudWatch calls.
-    Clients that send no Sec-Fetch-Site (curl, older browsers) are not treated as cross-site.
-    """
     site = headers.get("Sec-Fetch-Site")
     if site in (None, "same-origin", "none"):
         return False
@@ -118,12 +101,10 @@ def is_cross_site(headers, path):
 
 
 def is_local_host(host, port):
-    """Reject requests whose Host is not this machine (DNS-rebinding protection)."""
     return host in {f"{BIND}:{port}", f"localhost:{port}"}
 
 
 def valid_api_url(url):
-    """Same rules as normalizeApiUrl in js/api.js: https, or http to this machine only."""
     try:
         parts = urlsplit(url)
         host = parts.hostname
@@ -135,7 +116,6 @@ def valid_api_url(url):
 
 
 def csp_header(api_url):
-    """Content-Security-Policy that only lets the page call itself and the configured API."""
     parts = urlsplit(api_url)
     api_origin = f" {parts.scheme}://{parts.netloc}" if api_url else ""
     return ("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
@@ -143,7 +123,6 @@ def csp_header(api_url):
             "object-src 'none'; frame-ancestors 'none'")
 
 
-# ------------------------------------------------------------------ HTTP server
 class DashboardHandler(http.server.SimpleHTTPRequestHandler):
     def end_headers(self):
         for name, value in SECURITY_HEADERS.items():
@@ -195,7 +174,7 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
             return self._json(400, {"error": "hours must be an integer"})
         try:
             body = cloudwatch_metrics.collect(app["cloudwatch"], app["resources"], hours)
-        except Exception as exc:  # report the AWS error code locally, not a stack trace
+        except Exception as exc:
             code = getattr(exc, "response", {}).get("Error", {}).get("Code", type(exc).__name__)
             log.exception("CloudWatch request failed")
             return self._json(502, {"error": f"CloudWatch request failed ({code})"})
@@ -203,7 +182,6 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
 
 
 def cloudwatch_client(region):
-    """boto3 CloudWatch client for the caller's identity, or None (metrics disabled)."""
     try:
         import boto3
         session = boto3.Session(region_name=region) if region else boto3.Session()

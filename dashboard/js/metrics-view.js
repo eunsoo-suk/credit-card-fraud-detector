@@ -1,5 +1,3 @@
-// Pipeline health: CloudWatch charts in pipeline order, tagged by stage.
-
 import * as A from "./analytics.js";
 import * as charts from "./charts.js";
 import * as fmt from "./format.js";
@@ -8,7 +6,6 @@ const { el } = fmt;
 const STAGE_NAMES = { all: "All stages", producer: "Producer", kinesis: "Stream", writer: "Scoring",
   model: "Model", table: "Storage", alerts: "Alerts", api: "Read API" };
 
-// Each series sums one or more metric keys; `scale` converts units (µs -> ms).
 const METRIC_CHARTS = [
   { id: "m-errors", stage: "all", title: "Errors and throttles", sub: "Where the pipeline is failing, by stage",
     bars: true, stacked: true, wide: true, format: fmt.count, series: [
@@ -46,7 +43,6 @@ const METRIC_CHARTS = [
     format: fmt.duration, series: [{ keys: ["api.latency"], label: "Latency", slot: 1 }] },
 ];
 
-/** DOM id of the first chart card for a pipeline stage (for "Metrics" links). */
 export function stageCardId(stage) {
   const chart = METRIC_CHARTS.find((c) => c.stage === stage);
   return chart ? `card-${chart.id}` : null;

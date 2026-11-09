@@ -97,8 +97,6 @@ test("briefly pending alerts are normal", () => {
   assert.equal(stageHealth({ metrics: null, summary: busy, apiHealth }).alerts.status, "good");
 });
 
-// record_score marks every flagged item PENDING even when SNS is not deployed
-// (db/repository.py), so PENDING with nothing SENT is the normal no-SNS state.
 test("without SNS, flagged items stay PENDING: off with metrics, unknown without", () => {
   const noSns = { ...summary, alerts: { NONE: 90, PENDING: 4, SENT: 0 } };
   const m = metrics({ "kinesis.incoming_records": series("Sum", Array(15).fill(60)) }, { kinesis: "s" });
@@ -109,7 +107,6 @@ test("without SNS, flagged items stay PENDING: off with metrics, unknown without
 });
 
 test("an optional stage with no data does not turn a healthy pipeline into 'no data'", () => {
-  // Static hosting / --no-metrics / CloudWatch denied, and SNS not deployed.
   const noSns = { ...summary, alerts: { NONE: 90, PENDING: 4, SENT: 0 } };
   const h = stageHealth({ metrics: null, summary: noSns, apiHealth });
   assert.equal(h.alerts.status, "unknown");

@@ -1,5 +1,3 @@
-// Dashboard controller: data source, refresh timer, drawing and navigation.
-
 import { createApiSource, normalizeApiUrl, EVENT_ID } from "./api.js";
 import { createDemoSource } from "./demo.js";
 import * as A from "./analytics.js";
@@ -32,11 +30,9 @@ function savePrefs(prefs) {
   try {
     localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
   } catch {
-    // storage blocked (private window); preferences just won't persist
   }
 }
 
-/** Live source from config (or ?api= when nothing is configured), otherwise demo data. */
 function chooseSource() {
   const params = new URLSearchParams(location.search);
   const config = window.FRAUD_DASHBOARD_CONFIG ?? {};
@@ -75,7 +71,7 @@ const state = {
 
 async function load() {
   if (state.loading) {
-    state.reloadQueued = true; // e.g. Sample changed mid-load: run again with the new settings
+    state.reloadQueued = true;
     return;
   }
   state.loading = true;
@@ -91,9 +87,9 @@ async function load() {
       return fallback;
     };
     state.apiHealth = health.value ?? { ok: false, error: String(health.reason) };
-    state.recent = take(recent, "Recent transactions", state.recent); // failures keep the last rows
+    state.recent = take(recent, "Recent transactions", state.recent);
     state.flagged = take(flagged, "Flagged transactions", state.flagged);
-    state.metrics = take(metrics, "CloudWatch metrics", null); // never judge health on stale metrics
+    state.metrics = take(metrics, "CloudWatch metrics", null);
     state.errors = [...errors, ...source.takeWarnings().map((text) => ({ level: "warning", text }))];
     state.loadedAt = Date.now();
   } finally {
@@ -131,11 +127,10 @@ function setFilter(filter, tab) {
 }
 
 const go = {
-  showFlagged: () => setFilter(filters.flagged(), "recent"), // the same rows the hero counts
+  showFlagged: () => setFilter(filters.flagged(), "recent"),
   showRecent: () => setFilter(null, "recent"),
   showErrors: () => setFilter(filters.status("ERROR"), "recent"),
   showChart: goTo,
-  // Scoring errors live in the table; other stage problems are best seen on their charts.
   showStage: (key) => (key === "writer" && state.recent.some((i) => i.status === "ERROR")
     ? go.showErrors() : goTo(stageCardId(key))),
 };
@@ -217,7 +212,6 @@ async function openDrawer(item) {
   if (!dialog.open) dialog.showModal();
   try {
     const fresh = await state.source.transaction(item.event_id);
-    // Ignore late answers for a transaction the user has already moved away from.
     if (fresh && dialog.open && state.drawerId === item.event_id) views.renderDetail($("drawer-body"), fresh);
   } catch (error) {
     if (state.drawerId === item.event_id) {

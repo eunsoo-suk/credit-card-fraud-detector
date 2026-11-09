@@ -1,5 +1,3 @@
-// Formatting and DOM helpers. el() only sets text, so data can never inject HTML.
-
 const compact = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 });
 const whole = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
@@ -9,7 +7,6 @@ export function count(n) {
   return Math.abs(n) < 10_000 ? whole.format(n) : compact.format(n);
 }
 
-/** "1 stage", "3 stages"; pass `many` for irregular plurals ("deliveries"). */
 export function plural(n, one, many = `${one}s`) {
   return `${count(n)} ${n === 1 ? one : many}`;
 }
@@ -52,7 +49,6 @@ export function ago(seconds) {
   return `${(seconds / 3600).toFixed(1)} h ago`;
 }
 
-/** Humanize a dataset category: "shopping_net" -> "shopping net". */
 export function label(text) {
   return String(text ?? "—").replaceAll("_", " ");
 }

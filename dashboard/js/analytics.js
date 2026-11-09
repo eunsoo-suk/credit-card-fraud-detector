@@ -1,7 +1,5 @@
-// Pure aggregations over API items (item shape: db/repository.py).
-
 const DEFAULT_THRESHOLD = 0.5;
-const BUCKET_STEPS = [10, 30, 60, 300, 900, 1800, 3600, 21600]; // seconds
+const BUCKET_STEPS = [10, 30, 60, 300, 900, 1800, 3600, 21600];
 
 const isScored = (i) => i.status === "SCORED" && typeof i.fraud_score === "number";
 const isFlagged = (i) => i.predicted_fraud === true;
@@ -45,7 +43,6 @@ export function summarize(items, now = Date.now()) {
   };
 }
 
-/** Predictions vs the replay's ground-truth labels (monitoring only, not model evaluation). */
 export function labelCheck(items) {
   const c = { tp: 0, fp: 0, fn: 0, tn: 0 };
   for (const it of items.filter(isScored)) {
@@ -60,7 +57,6 @@ export function labelCheck(items) {
     precision: ratio(c.tp, c.tp + c.fp), recall: ratio(c.tp, c.tp + c.fn) };
 }
 
-/** Arrivals per time bucket (by emitted_at), contiguous, oldest first. */
 export function volumeSeries(items, targetBuckets = 40) {
   const times = items.map((i) => Date.parse(i.emitted_at)).filter(Number.isFinite);
   if (!times.length) return { bucketSeconds: BUCKET_STEPS[0], buckets: [] };
@@ -81,7 +77,6 @@ export function volumeSeries(items, targetBuckets = 40) {
   return { bucketSeconds, buckets };
 }
 
-/** Score distribution; each bin's count is split into below / at-or-above threshold. */
 export function scoreHistogram(items, binCount = 20, threshold = DEFAULT_THRESHOLD) {
   const bins = Array.from({ length: binCount }, (_, k) => ({
     from: k / binCount, to: (k + 1) / binCount, below: 0, above: 0 }));
@@ -92,7 +87,6 @@ export function scoreHistogram(items, binCount = 20, threshold = DEFAULT_THRESHO
   return { bins, threshold };
 }
 
-/** Totals and flags per key, most-flagged first; past `top` keys fold into "Other". */
 export function groupBy(items, keyOf, top = 8) {
   const groups = new Map();
   for (const it of items) {
@@ -111,7 +105,6 @@ export function groupBy(items, keyOf, top = 8) {
   return head.map((g) => ({ ...g, rate: ratio(g.flagged, g.total) }));
 }
 
-/** Flag rate by the transaction's source hour (0-23), always 24 entries. */
 export function hourProfile(items) {
   const hours = Array.from({ length: 24 }, (_, hour) => ({ hour, total: 0, flagged: 0 }));
   for (const it of items) {
@@ -123,7 +116,6 @@ export function hourProfile(items) {
   return hours.map((h) => ({ ...h, rate: ratio(h.flagged, h.total) }));
 }
 
-/** Amount (x) vs fraud score (y), capped to `max` points, keeping every flagged one first. */
 export function scatterPoints(items, max = 800) {
   const scored = items.filter(isScored);
   const point = (i) => ({ x: Number(i.features?.amount) || 0, y: i.fraud_score, id: i.event_id });
@@ -132,7 +124,6 @@ export function scatterPoints(items, max = 800) {
   return { flagged, other };
 }
 
-/** Align a series onto a fixed grid; a missing CloudWatch period is 0 for Sum, null otherwise. */
 export function alignSeries(series, start, end, period) {
   const step = period * 1000;
   const first = Date.parse(start);
@@ -147,7 +138,6 @@ export function alignSeries(series, start, end, period) {
   return { labels, values };
 }
 
-/** Arrivals per second across the window's emitted_at span; null with < 2 items. */
 export function arrivalRate(items) {
   const times = items.map((i) => Date.parse(i.emitted_at)).filter(Number.isFinite);
   if (times.length < 2) return null;

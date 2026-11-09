@@ -1,8 +1,5 @@
-// Live data source (same interface as demo.js): the read API, plus serve.py's
-// /local/metrics for CloudWatch. The browser never holds AWS credentials.
-
 const TIMEOUT_MS = 8_000;
-const PAGE_SIZE = 100; // the reader Lambda's MAX_LIMIT
+const PAGE_SIZE = 100;
 export const EVENT_ID = /^[0-9a-fA-F-]{36}$/;
 
 class ApiError extends Error {
@@ -15,7 +12,6 @@ class ApiError extends Error {
 
 const utcDay = (offsetDays) => new Date(Date.now() + offsetDays * 86_400_000).toISOString().slice(0, 10);
 
-/** Accept only https URLs, or http on this machine (for local testing). */
 export function normalizeApiUrl(raw) {
   try {
     const url = new URL(String(raw).trim());
@@ -52,7 +48,6 @@ export function createApiSource(baseUrl, { metricsUrl = "" } = {}) {
 
   const warnings = [];
 
-  /** Follow `next` tokens; if a later page fails (e.g. throttled), keep what arrived and warn. */
   async function pages(path, params, limit) {
     const items = [];
     let next = null;
@@ -85,7 +80,6 @@ export function createApiSource(baseUrl, { metricsUrl = "" } = {}) {
       }
     },
 
-    /** Newest transactions; tops up from yesterday (UTC) just after midnight. */
     async recent(limit) {
       const today = await pages("/transactions/recent", { day: utcDay(0) }, limit);
       if (today.length >= limit) return today;
@@ -104,10 +98,8 @@ export function createApiSource(baseUrl, { metricsUrl = "" } = {}) {
       }
     },
 
-    /** Partial-load warnings since the last call (and clears them). */
     takeWarnings: () => warnings.splice(0),
 
-    /** CloudWatch body, or null when the page was not opened through serve.py. */
     metrics: async (hours) => (metricsUrl ? get(metricsUrl, { hours }, "") : null),
   };
 }

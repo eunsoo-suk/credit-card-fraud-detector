@@ -1,22 +1,13 @@
-"""CloudWatch metrics for every pipeline stage, for the dashboard's local server.
-
-Runs on the operator's machine with their own AWS identity (never in the browser).
-One GetMetricData request covers every configured stage (STAGES; the SageMaker
-model and SNS alerts are optional). Unconfigured stages are omitted, not reported as zero. Results are cached for
-CACHE_SECONDS so the page's auto-refresh does not multiply CloudWatch requests.
-"""
-
 from datetime import datetime, timedelta, timezone
 import threading
 import time
 
 MAX_HOURS = 24
 SHORT_WINDOW_HOURS = 3
-SHORT_PERIOD = 60   # 1-minute points up to 3 hours
-LONG_PERIOD = 300   # 5-minute points beyond that
+SHORT_PERIOD = 60
+LONG_PERIOD = 300
 CACHE_SECONDS = 60
 
-# stage -> (namespace, dimension that holds the stage's resource name)
 STAGES = {
     "producer": ("AWS/EC2", "InstanceId"),
     "kinesis": ("AWS/Kinesis", "StreamName"),
@@ -28,7 +19,6 @@ STAGES = {
 }
 EXTRA_DIMENSIONS = {"model": {"VariantName": "AllTraffic"}}
 
-# "stage.name" -> (metric name, statistic, unit, label); js/demo.js mirrors stat and unit
 CATALOG = {
     "producer.cpu": ("CPUUtilization", "Average", "Percent", "Producer CPU"),
     "kinesis.incoming_records": ("IncomingRecords", "Sum", "Count", "Records in"),
@@ -70,14 +60,13 @@ def clear_cache():
 
 
 def stage_dimensions(resources):
-    """Stage -> (display name, CloudWatch dimensions) for every configured stage."""
     stages = {}
     for stage, (_, dimension) in STAGES.items():
         resource = resources.get(stage)
         if not resource:
             continue
         if stage == "alerts":
-            resource = resource.rsplit(":", 1)[-1]  # topic ARN -> topic name
+            resource = resource.rsplit(":", 1)[-1]
         stages[stage] = (resource, {dimension: resource, **EXTRA_DIMENSIONS.get(stage, {})})
     return stages
 
@@ -112,7 +101,6 @@ def _queries(stages, period):
 
 
 def _fetch(client, queries, start, end):
-    """All MetricDataResults across pages."""
     params = {"MetricDataQueries": queries, "StartTime": start, "EndTime": end,
               "ScanBy": "TimestampAscending"}
     results = []
@@ -143,16 +131,12 @@ def _series(results, keys):
 
 
 def collect(client, resources, hours, now=None):
-    """Metrics for the last `hours` hours: {"stages", "series", "period", "start", "end"}.
-
-    client is boto3.client("cloudwatch"); resources maps stage -> resource name.
-    """
     now = now or datetime.now(timezone.utc)
     hours = max(1, min(int(hours), MAX_HOURS))
     period, start, end = _window(hours, now)
     stages = stage_dimensions(resources)
     cache_key = (hours, tuple(sorted((k, v[0]) for k, v in stages.items())))
-    with _lock:  # serve.py is threaded: concurrent cold requests share one AWS call
+    with _lock:
         cached = _cache.get(cache_key)
         if cached and cached[0] > time.monotonic():
             return cached[1]

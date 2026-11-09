@@ -1,8 +1,3 @@
-"""Offline tests for the dashboard's local server and CloudWatch collector.
-
-Run from the repository root:  python -m unittest discover -s dashboard/tests
-"""
-
 from datetime import datetime, timezone
 from functools import partial
 import http.server
@@ -17,8 +12,8 @@ from unittest.mock import Mock
 
 DASHBOARD = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(DASHBOARD))
-import cloudwatch_metrics as cw  # noqa: E402
-import serve  # noqa: E402
+import cloudwatch_metrics as cw
+import serve
 
 NOW = datetime(2026, 11, 1, 12, 0, 30, tzinfo=timezone.utc)
 BASIC = {"kinesis": "fraud-stream", "writer": "fraud-writer", "table": "FraudTransactions"}
@@ -85,7 +80,7 @@ class CollectTests(unittest.TestCase):
     def test_period_window_and_clamping(self):
         short = cw.collect(self.client, BASIC, hours=1, now=NOW)
         self.assertEqual(short["period"], 60)
-        self.assertEqual(short["end"], "2026-11-01T12:00:00+00:00")  # aligned to period
+        self.assertEqual(short["end"], "2026-11-01T12:00:00+00:00")
         cw.clear_cache()
         long = cw.collect(self.client, BASIC, hours=500, now=NOW)
         self.assertEqual((long["hours"], long["period"]), (24, 300))
@@ -106,7 +101,6 @@ class CollectTests(unittest.TestCase):
         self.client.get_metric_data.assert_not_called()
 
     def test_demo_catalog_matches_cloudwatch_catalog(self):
-        """js/demo.js mirrors CATALOG so demo charts use the live keys, stats and units."""
         import re
         source = (DASHBOARD / "js" / "demo.js").read_text(encoding="utf-8")
         demo = {key: (stat, unit) for key, stat, unit in
@@ -158,7 +152,6 @@ class StateFileTests(unittest.TestCase):
 
 
 class RequestHardeningTests(unittest.TestCase):
-    """Findings from the ECC security review (encoded traversal, cross-site reads)."""
 
     def public(self, raw):
         path = serve.request_path(raw)
@@ -182,8 +175,7 @@ class RequestHardeningTests(unittest.TestCase):
                                             "/local/metrics"))
         self.assertFalse(serve.is_cross_site({"Sec-Fetch-Site": "same-origin"}, "/config.js"))
         self.assertFalse(serve.is_cross_site({"Sec-Fetch-Site": "none"}, "/"))
-        self.assertFalse(serve.is_cross_site({}, "/config.js"))  # curl / older browsers
-        # following a link to the dashboard from another site still opens the page
+        self.assertFalse(serve.is_cross_site({}, "/config.js"))
         self.assertFalse(serve.is_cross_site({"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "navigate"}, "/"))
 
     def test_api_url_validation_matches_the_browser(self):
@@ -201,7 +193,6 @@ class RequestHardeningTests(unittest.TestCase):
 
 
 class LiveServerTests(unittest.TestCase):
-    """Raw HTTP against a real server on a free port, so stray body bytes are visible."""
 
     def setUp(self):
         handler = partial(serve.DashboardHandler, directory=str(DASHBOARD))

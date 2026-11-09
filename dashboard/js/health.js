@@ -1,5 +1,3 @@
-// Per-stage status: CloudWatch when configured, otherwise inferred from transactions.
-
 import { count, duration, percent, plural, rate, ago } from "./format.js";
 
 export const STAGES = [
@@ -12,18 +10,16 @@ export const STAGES = [
   { key: "api", name: "Read API", service: "API Gateway + Lambda" },
 ];
 
-// Stages a deployment may legitimately run without (cloudwatch_metrics.py marks them optional).
-// "No data" from these is listed in the status panel but does not set the overall status.
 const OPTIONAL_STAGES = new Set(["model", "alerts"]);
 
 export const LIMITS = {
-  RECENT_SECONDS: 900,      // status looks at the last 15 minutes of the window
-  LAG_WARN_MS: 60_000,      // records waiting > 1 min to be read
-  LAG_CRIT_MS: 300_000,     // > 5 min: scoring is falling behind
-  ERROR_RATE_CRIT: 0.05,    // > 5% of Lambda / endpoint calls failing
+  RECENT_SECONDS: 900,
+  LAG_WARN_MS: 60_000,
+  LAG_CRIT_MS: 300_000,
+  ERROR_RATE_CRIT: 0.05,
   API_4XX_WARN: 0.05,
-  CPU_WARN: 85,             // percent
-  STALE_SECONDS: 300,       // no new transaction for 5 min
+  CPU_WARN: 85,
+  STALE_SECONDS: 300,
 };
 
 const RANK = { off: 0, good: 1, unknown: 2, warning: 3, critical: 4 };
@@ -72,7 +68,7 @@ function producer(m, summary) {
 function kinesis(m, summary) {
   if (!has(m, "kinesis")) return freshness(summary) ?? result("unknown", "no data");
   const incoming = recent(m, "kinesis.incoming_records");
-  const seconds = LIMITS.RECENT_SECONDS; // CloudWatch omits empty periods; they still count as time
+  const seconds = LIMITS.RECENT_SECONDS;
   const lag = max(recent(m, "kinesis.iterator_age"));
   const throttled = sum(recent(m, "kinesis.write_throttled")) + sum(recent(m, "kinesis.read_throttled"));
   const idle = sum(incoming) === 0;
@@ -83,8 +79,6 @@ function kinesis(m, summary) {
 }
 
 function writer(m, summary) {
-  // Item-level failures are caught inside the Lambda (record_error), so they never show up in
-  // its CloudWatch Errors metric, which counts whole failed batches. Name them differently.
   const itemErrors = summary?.errors ?? 0;
   const itemStatus = itemErrors ? "warning" : "good";
   const itemDetail = itemErrors ? `${plural(itemErrors, "transaction")} failed scoring` : "";
@@ -137,12 +131,10 @@ function alerts(m, summary) {
         : `${count(sum(recent(m, "alerts.published")))} published`);
   }
   const notConfigured = result("off", "not configured", "Deploy with --alert-email to enable");
-  if (m) return notConfigured; // metrics name every deployed stage, and there is no SNS topic
+  if (m) return notConfigured;
   if (!summary) return result("unknown", "no data");
   const { SENT, PENDING } = summary.alerts;
   if (SENT + PENDING === 0) return notConfigured;
-  // record_score marks every flagged item PENDING even when SNS is not deployed, so
-  // PENDING with nothing SENT cannot be told apart from "alerts disabled" here.
   if (SENT === 0) {
     return result("unknown", "not confirmed",
       `${plural(PENDING, "flagged item")} pending; SNS may be off (needs --alert-email)`);
@@ -176,24 +168,17 @@ export function stageHealth({ metrics, summary, apiHealth }) {
   };
 }
 
-/**
- * Overall status: the worst stage, ignoring stages that are off. An optional stage with no
- * data (e.g. SNS not deployed and no CloudWatch to prove it) does not hide a healthy main path;
- * the status panel lists it separately via unconfirmed().
- */
 export function overall(health) {
   return worst(...Object.entries(health).map(([key, h]) =>
     (h.status === "unknown" && OPTIONAL_STAGES.has(key) ? "off" : h.status)));
 }
 
-/** Stages reporting no data, in pipeline order, for the status panel. */
 export function unconfirmed(health) {
   return STAGES
     .filter((s) => health[s.key]?.status === "unknown")
     .map((s) => ({ key: s.key, name: s.name, ...health[s.key] }));
 }
 
-/** Stages that need attention, critical first, for the status panel. */
 export function issues(health) {
   return STAGES
     .filter((s) => ["critical", "warning"].includes(health[s.key]?.status))
