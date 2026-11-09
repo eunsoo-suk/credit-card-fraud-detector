@@ -145,7 +145,10 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
         self._send(status, json.dumps(body, default=str), "application/json")
 
     def do_HEAD(self):
-        self._json(405, {"error": "only GET is supported"})
+        self.send_response(405)
+        self.send_header("Allow", "GET")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
 
     def do_GET(self):
         app = self.server.app
