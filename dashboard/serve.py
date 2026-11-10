@@ -66,6 +66,7 @@ def read_state(local_dir):
         "table": backend.get("Table"),
         "alerts": backend.get("AlertTopicArn"),
         "api": backend.get("ApiId"),
+        "model": backend.get("SageMakerEndpoint"),
     }
     return {
         "api_url": backend.get("ApiUrl", ""),
