@@ -3,6 +3,7 @@
 Requires an authenticated AWS identity (aws login / aws configure) and boto3.
 
     python scripts/deploy_backend.py deploy  --region us-east-1 [--alert-email you@umd.edu]
+    python scripts/deploy_backend.py deploy  --region us-east-1 --sagemaker-endpoint fraud-detector-serverless
     python scripts/deploy_backend.py status  --region us-east-1
     python scripts/deploy_backend.py destroy --region us-east-1 --yes
 
@@ -151,6 +152,22 @@ def deploy(args, session):
             print(f"  SNS: confirm the subscription email sent to {args.alert_email}")
         print(f"SNS topic: {topic_arn}")
 
+    account = session.client("sts").get_caller_identity()["Account"]
+    scorer_env = {"SCORER_MODE": "placeholder"}
+    endpoint_arn = ""
+    if args.sagemaker_endpoint:
+        sm = session.client("sagemaker")
+        endpoint = sm.describe_endpoint(EndpointName=args.sagemaker_endpoint)
+        if endpoint["EndpointStatus"] != "InService":
+            sys.exit(f"Endpoint {args.sagemaker_endpoint} is {endpoint['EndpointStatus']}, not InService")
+        endpoint_arn = endpoint["EndpointArn"]
+        model_version = args.model_version or endpoint["EndpointConfigName"]
+        scorer_env = {"SCORER_MODE": "sagemaker", "SAGEMAKER_ENDPOINT": args.sagemaker_endpoint,
+                      "MODEL_VERSION": model_version}
+        print(f"SageMaker endpoint: {endpoint_arn} (model_version {model_version})")
+    else:
+        print("Scoring: placeholder rules (pass --sagemaker-endpoint to use the model)")
+
     print("IAM roles")
     writer_policies = {
         "dynamodb-write": load_policy("writer-policy.json", table_arn),
@@ -164,6 +181,14 @@ def deploy(args, session):
     if topic_arn:
         writer_policies["sns-publish"] = {"Version": "2012-10-17", "Statement": [{
             "Effect": "Allow", "Action": "sns:Publish", "Resource": topic_arn}]}
+    if endpoint_arn:
+        writer_policies["sagemaker-invoke"] = {"Version": "2012-10-17", "Statement": [{
+            "Effect": "Allow", "Action": "sagemaker:InvokeEndpoint", "Resource": endpoint_arn}]}
+    else:
+        try:
+            iam.delete_role_policy(RoleName=f"{WRITER}-role", PolicyName="sagemaker-invoke")
+        except iam.exceptions.NoSuchEntityException:
+            pass
     writer_role, new_w = ensure_role(iam, f"{WRITER}-role", writer_policies)
     reader_role, new_r = ensure_role(iam, f"{READER}-role",
                                      {"dynamodb-read": load_policy("reader-policy.json", table_arn)})
@@ -174,7 +199,7 @@ def deploy(args, session):
     writer_arn = ensure_function(
         lam, WRITER, writer_role, build_zip(ROOT / "lambdas" / "writer"),
         {"TABLE_NAME": args.table, "THRESHOLD": str(args.threshold),
-         "ALERT_TOPIC_ARN": topic_arn, "SCORER_MODE": "placeholder"},
+         "ALERT_TOPIC_ARN": topic_arn, **scorer_env},
         timeout=60, memory=256,
         description="Kinesis -> score -> DynamoDB (-> SNS) for fraud detector")
     reader_arn = ensure_function(
@@ -210,7 +235,6 @@ def deploy(args, session):
         print(f"  created API {api['ApiId']}")
     api_gw.update_stage(ApiId=api["ApiId"], StageName="$default", DefaultRouteSettings={
         "ThrottlingBurstLimit": 20, "ThrottlingRateLimit": 10})
-    account = session.client("sts").get_caller_identity()["Account"]
     try:
         lam.add_permission(
             FunctionName=READER, StatementId="apigateway-invoke",
@@ -223,7 +247,9 @@ def deploy(args, session):
     state = {"Region": args.region, "Table": args.table, "StreamArn": stream_arn,
              "WriterFunction": WRITER, "ReaderFunction": READER, "MappingUUID": mapping_uuid,
              "ApiId": api["ApiId"], "ApiUrl": url, "AlertTopicArn": topic_arn,
-             "Threshold": args.threshold}
+             "Threshold": args.threshold, "ScorerMode": scorer_env["SCORER_MODE"],
+             "SageMakerEndpoint": args.sagemaker_endpoint or "",
+             "ModelVersion": scorer_env.get("MODEL_VERSION", "")}
     STATE_FILE.parent.mkdir(exist_ok=True)
     STATE_FILE.write_text(json.dumps(state, indent=2) + "\n")
     print(json.dumps(state, indent=2))
@@ -236,6 +262,10 @@ def status(args, session):
         try:
             c = lam.get_function(FunctionName=name)["Configuration"]
             print(f"{name}: {c['State']} / last update {c.get('LastUpdateStatus')}")
+            env = c.get("Environment", {}).get("Variables", {})
+            if name == WRITER:
+                print(f"  scorer: {env.get('SCORER_MODE')} {env.get('SAGEMAKER_ENDPOINT', '')} "
+                      f"{env.get('MODEL_VERSION', '')}".rstrip())
         except lam.exceptions.ResourceNotFoundException:
             print(f"{name}: not deployed")
     for m in lam.list_event_source_mappings(FunctionName=WRITER).get("EventSourceMappings", []):
@@ -296,6 +326,9 @@ def main():
     parser.add_argument("--table", default=schema.TABLE_NAME)
     parser.add_argument("--threshold", type=float, default=0.5)
     parser.add_argument("--alert-email", help="optional: create SNS topic + email subscription")
+    parser.add_argument("--sagemaker-endpoint",
+                        help="score with this SageMaker endpoint (default: placeholder rules)")
+    parser.add_argument("--model-version", help="label stored with scores (default: endpoint config name)")
     parser.add_argument("--yes", action="store_true")
     parser.add_argument("--delete-table", action="store_true")
     args = parser.parse_args()

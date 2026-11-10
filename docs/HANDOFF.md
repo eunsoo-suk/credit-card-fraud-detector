@@ -49,10 +49,15 @@ The producer supplies this exact feature set (not a universal pretrained-model f
 | city_population | int | Source city_pop |
 | customer_lat, customer_lon | float | Source customer coordinates |
 | merchant_lat, merchant_lon | float | Source merchant coordinates |
-| age_at_transaction | int | Age derived using source transaction date and dob |
+| age_at_transaction | int | int((transaction time - dob).days / 365.25), same as model training (v2) |
 | hour | int | 0..23 from original timestamp |
 | weekday | int | Monday=0 .. Sunday=6 from original timestamp |
 | month | int | 1..12 from original timestamp |
+| gender | string | Source gender (added in feature v2: required by the SageMaker model) |
+
+feature_version v2 (current): adds `gender` and uses the model's age definition. The writer
+Lambda converts these features into the endpoint's eight inputs in
+`lambdas/writer/scorer.py::model_input` (distance_km from the four coordinates).
 
 Use src/producer.py::row_to_features in training too. Model owner must fit encoders,
 scalers and other preprocessing on training/validation data only, save the complete

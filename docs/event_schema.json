@@ -24,7 +24,7 @@
       "const": "1.0"
     },
     "feature_version": {
-      "const": "v1"
+      "const": "v2"
     },
     "event_id": {
       "type": "string"
@@ -69,7 +69,8 @@
         "age_at_transaction",
         "hour",
         "weekday",
-        "month"
+        "month",
+        "gender"
       ],
       "properties": {
         "amount": {
@@ -110,6 +111,9 @@
         },
         "month": {
           "type": "integer"
+        },
+        "gender": {
+          "type": "string"
         }
       }
     },

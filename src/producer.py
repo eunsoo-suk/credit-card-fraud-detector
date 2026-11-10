@@ -15,9 +15,11 @@ from datetime import datetime, timezone
 LOG = logging.getLogger("fraud-producer")
 FEATURES = ["amount", "category", "merchant", "state", "city_population",
             "customer_lat", "customer_lon", "merchant_lat", "merchant_lon",
-            "age_at_transaction", "hour", "weekday", "month"]
+            "age_at_transaction", "hour", "weekday", "month", "gender"]
+FEATURE_VERSION = "v2"
 REQUIRED = {"trans_date_trans_time", "cc_num", "merchant", "category", "amt", "state",
-            "city_pop", "lat", "long", "merch_lat", "merch_long", "dob", "trans_num", "is_fraud"}
+            "city_pop", "lat", "long", "merch_lat", "merch_long", "dob", "trans_num", "is_fraud",
+            "gender"}
 
 
 def number(row, key):
@@ -34,8 +36,10 @@ def row_to_features(row):
     without falsely converting those timestamps to UTC.
     """
     when = datetime.strptime(row["trans_date_trans_time"], "%Y-%m-%d %H:%M:%S")
-    born = datetime.strptime(row["dob"], "%Y-%m-%d").date()
-    age = when.year - born.year - ((when.month, when.day) < (born.month, born.day))
+    born = datetime.strptime(row["dob"], "%Y-%m-%d")
+    # feature v2: same definition as the SageMaker model's training data
+    # (sagemaker/prepare_data.py): whole days / 365.25, truncated.
+    age = int((when - born).days / 365.25)
     amount = number(row, "amt")
     if amount < 0 or not 0 <= age <= 120:
         raise ValueError("Invalid amount or age")
@@ -47,9 +51,12 @@ def row_to_features(row):
     population = int(row["city_pop"])
     if population < 0:
         raise ValueError("Invalid population")
+    gender = row["gender"].strip()
+    if not gender:
+        raise ValueError("Missing gender")
     return dict(zip(FEATURES, [amount, row["category"], row["merchant"], row["state"],
         population, latitude, longitude, mlat, mlon, age, when.hour,
-        when.weekday(), when.month]))
+        when.weekday(), when.month, gender]))
 
 
 def make_event(row, replay_id, cycle, row_index, dataset):
@@ -60,7 +67,7 @@ def make_event(row, replay_id, cycle, row_index, dataset):
     event_id = str(uuid.uuid5(uuid.UUID(replay_id),
                            f"{cycle}:{row_index}:{row['trans_num']}"))
     return {
-        "schema_version": "1.0", "feature_version": "v1", "event_id": event_id,
+        "schema_version": "1.0", "feature_version": FEATURE_VERSION, "event_id": event_id,
         "replay_id": replay_id, "replay_cycle": cycle, "source_row": row_index,
         "source_dataset": dataset, "source_transaction_id": row["trans_num"],
         "source_timestamp": row["trans_date_trans_time"],

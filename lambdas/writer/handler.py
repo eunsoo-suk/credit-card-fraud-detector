@@ -1,11 +1,14 @@
-"""Kinesis-triggered writer Lambda: score each transaction and store it.
+"""Kinesis-triggered writer Lambda: store, score and alert, one model call per batch.
 
-Flow per record: decode -> put_pending -> score -> record_score
-                 -> (if flagged and SNS configured) begin_alert -> publish -> mark_alert_sent
-Kinesis delivery is at-least-once; every DB write is conditional (db/repository.py),
-so a retried batch never duplicates or overwrites results.
-Transient failures are returned in batchItemFailures so only those records retry.
-Malformed records are logged and skipped (retrying them can never succeed).
+Per batch:
+  1. decode each record and put_pending (conditional: a redelivered event is not duplicated)
+  2. build model inputs; a record that can never be scored (bad/missing features) is
+     marked ERROR and skipped (retrying it cannot succeed)
+  3. score all remaining records with ONE scorer call (SageMaker endpoint or placeholder)
+     - call fails -> those records are marked ERROR and returned in batchItemFailures, so
+       Kinesis retries them; on success record_score turns ERROR into SCORED
+  4. record_score; if flagged and SNS is configured: begin_alert -> publish -> mark_alert_sent
+An inference failure is never stored as "not fraud". ground_truth is never used here.
 """
 
 import base64
@@ -48,50 +51,69 @@ def _alert_message(tx, fraud_score):
     )
 
 
-def process(tx, ddb, sns):
-    """Store and score one transaction. Returns a short outcome label."""
-    event_id = tx["event_id"]
-    repo.put_pending(ddb, tx, table=TABLE)  # False on redelivery; continue anyway
-    try:
-        fraud_score, model_version = scorer.score(tx["features"])
-    except Exception as exc:  # inference failure is never treated as non-fraud
-        log.warning("scoring failed for %s: %s", event_id, exc)
-        repo.record_error(ddb, event_id, f"scoring failed: {exc}", table=TABLE)
-        return "error"
-    _, flagged = repo.record_score(ddb, event_id, fraud_score, THRESHOLD, model_version,
+def _finish(tx, fraud_score, model_version, ddb, sns):
+    _, flagged = repo.record_score(ddb, tx["event_id"], fraud_score, THRESHOLD, model_version,
                                    table=TABLE)
-    if flagged and sns is not None and repo.begin_alert(ddb, event_id, table=TABLE):
-        message_id = sns.publish(
-            TopicArn=ALERT_TOPIC_ARN,
-            Subject="Fraud alert (demo)",
-            Message=_alert_message(tx, fraud_score),
-        )["MessageId"]
-        repo.mark_alert_sent(ddb, event_id, message_id, table=TABLE)
+    if flagged and sns is not None and repo.begin_alert(ddb, tx["event_id"], table=TABLE):
+        message_id = sns.publish(TopicArn=ALERT_TOPIC_ARN, Subject="Fraud alert (demo)",
+                                 Message=_alert_message(tx, fraud_score))["MessageId"]
+        repo.mark_alert_sent(ddb, tx["event_id"], message_id, table=TABLE)
     return "flagged" if flagged else "scored"
+
+
+def _count(counts, key, n=1):
+    counts[key] = counts.get(key, 0) + n
 
 
 def lambda_handler(event, context):
     ddb, sns = _clients()
-    failures, counts = [], {}
+    failures, counts, ready = [], {}, []
+
     for record in event.get("Records", []):
         seq = record["kinesis"]["sequenceNumber"]
         try:
             tx = json.loads(base64.b64decode(record["kinesis"]["data"]))
             if tx.get("schema_version") != "1.0":
                 raise ValueError(f"unsupported schema_version {tx.get('schema_version')!r}")
-        except (ValueError, KeyError, TypeError) as exc:
+            repo.put_pending(ddb, tx, table=TABLE)       # False on redelivery; continue
+        except (ValueError, KeyError, TypeError) as exc:  # malformed: can never succeed
             log.error("skipping malformed record %s: %s", seq, exc)
-            counts["malformed"] = counts.get("malformed", 0) + 1
+            _count(counts, "malformed")
+            continue
+        except Exception:
+            log.exception("transient failure storing %s; will retry", seq)
+            failures.append({"itemIdentifier": seq})
+            _count(counts, "retry")
             continue
         try:
-            outcome = process(tx, ddb, sns)
-        except ValueError as exc:  # missing required event fields
-            log.error("skipping invalid event %s: %s", seq, exc)
-            outcome = "malformed"
+            ready.append((seq, tx, scorer.prepare(tx["features"])))
+        except (ValueError, KeyError, TypeError) as exc:
+            log.error("cannot build model input for %s: %s", tx["event_id"], exc)
+            repo.record_error(ddb, tx["event_id"], f"bad model input: {exc}", table=TABLE)
+            _count(counts, "error")
+
+    scores, model_version = [], ""
+    if ready:
+        try:
+            scores, model_version = scorer.score_batch([item for _, _, item in ready])
+        except Exception as exc:
+            log.exception("scoring call failed for %d records; will retry", len(ready))
+            for seq, tx, _ in ready:
+                try:
+                    repo.record_error(ddb, tx["event_id"], f"scoring failed: {exc}", table=TABLE)
+                except Exception:
+                    log.exception("could not mark %s as ERROR", tx["event_id"])
+                failures.append({"itemIdentifier": seq})
+            _count(counts, "retry", len(ready))
+            ready = []
+
+    for (seq, tx, _), fraud_score in zip(ready, scores):
+        try:
+            _count(counts, _finish(tx, fraud_score, model_version, ddb, sns))
         except Exception:
-            log.exception("transient failure on %s; will retry", seq)
+            log.exception("transient failure saving %s; will retry", seq)
             failures.append({"itemIdentifier": seq})
-            outcome = "retry"
-        counts[outcome] = counts.get(outcome, 0) + 1
-    log.info("batch summary: %s", json.dumps(counts))
+            _count(counts, "retry")
+
+    log.info("batch summary: %s", json.dumps({"model_version": model_version, **counts}))
     return {"batchItemFailures": failures}

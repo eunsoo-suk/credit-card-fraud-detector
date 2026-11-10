@@ -36,6 +36,9 @@ python scripts/manage.py status --stack fraud-ingestion --region us-east-1   # w
 python scripts/verify_stream.py --stack fraud-ingestion --region us-east-1 --count 5
 
 # 2) backend: roles, Lambdas, Kinesis trigger, API
+#    with the SageMaker model (sagemaker/deploy_boto3.py deploys the endpoint):
+python scripts/deploy_backend.py deploy --region us-east-1 --sagemaker-endpoint fraud-detector-serverless
+#    or without a model (placeholder rules):
 python scripts/deploy_backend.py deploy --region us-east-1
 python scripts/deploy_backend.py status --region us-east-1
 

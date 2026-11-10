@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "feature_version": "v1",
+  "feature_version": "v2",
   "event_id": "a3836b30-2a39-543c-a8af-baca7121e670",
   "replay_id": "00000000-0000-0000-0000-000000000001",
   "replay_cycle": 0,
@@ -23,7 +23,8 @@
     "age_at_transaction": 30,
     "hour": 12,
     "weekday": 2,
-    "month": 7
+    "month": 7,
+    "gender": "F"
   },
   "ground_truth": {
     "is_fraud": 0
